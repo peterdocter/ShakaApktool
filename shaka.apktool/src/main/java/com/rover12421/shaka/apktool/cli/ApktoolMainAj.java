@@ -20,10 +20,12 @@ import brut.androlib.Androlib;
 import brut.androlib.ApktoolProperties;
 import brut.apktool.Main;
 import com.rover12421.shaka.lib.HookMain;
-import com.rover12421.shaka.lib.ReflectUtil;
+import com.rover12421.shaka.lib.ShakaBuildOption;
 import com.rover12421.shaka.lib.ShakaDecodeOption;
 import com.rover12421.shaka.lib.ShakaProperties;
+import com.rover12421.shaka.lib.cli.CommandLineArgEnum;
 import com.rover12421.shaka.lib.multiLanguage.MultiLanguageSupport;
+import com.rover12421.shaka.lib.reflect.Reflect;
 import com.rover12421.shaka.smali.baksmali.baksmaliMainAj;
 import com.rover12421.shaka.smali.smali.smaliMainAj;
 import org.apache.commons.cli.CommandLine;
@@ -42,8 +44,8 @@ import org.jf.util.SmaliHelpFormatter;
 @Aspect
 public class ApktoolMainAj {
 
-    private static HookMain hookMain = new HookMain() {
-        private ApktoolMainAj apktoolMainAj = new ApktoolMainAj();
+    private static final HookMain hookMain = new HookMain() {
+        private final ApktoolMainAj apktoolMainAj = new ApktoolMainAj();
         @Override
         public void version() {
             apktoolMainAj.version_around();
@@ -63,37 +65,39 @@ public class ApktoolMainAj {
         return hookMain;
     }
 
-    public static final Options normalOptions() throws Exception {
-        return (Options) ReflectUtil.getFieldValue(Main.class, "normalOptions");
+    private static final Reflect MainReflect = Reflect.on(Main.class);
+
+    public static Options normalOptions() throws Exception {
+        return MainReflect.get("normalOptions");
     }
 
-    public static final Options DecodeOptions() throws Exception {
-        return (Options) ReflectUtil.getFieldValue(Main.class, "DecodeOptions");
+    public static Options DecodeOptions() throws Exception {
+        return MainReflect.get("DecodeOptions");
     }
 
-    public static final Options BuildOptions() throws Exception {
-        return (Options) ReflectUtil.getFieldValue(Main.class, "BuildOptions");
+    public static Options BuildOptions() throws Exception {
+        return MainReflect.get("BuildOptions");
     }
 
-    public static final Options frameOptions() throws Exception {
-        return (Options) ReflectUtil.getFieldValue(Main.class, "frameOptions");
+    public static Options frameOptions() throws Exception {
+        return MainReflect.get("frameOptions");
     }
 
-    public static final Options allOptions() throws Exception {
-        return (Options) ReflectUtil.getFieldValue(Main.class, "allOptions");
+    public static Options allOptions() throws Exception {
+        return MainReflect.get("allOptions");
     }
 
-    public static final Options emptyOptions() throws Exception {
-        return (Options) ReflectUtil.getFieldValue(Main.class, "emptyOptions");
+    public static Options emptyOptions() throws Exception {
+        return MainReflect.get("emptyOptions");
     }
 
     private static String verbosityHelp() throws Exception {
-        return (String) ReflectUtil.invokeMethod(Main.class, "verbosityHelp");
+        return MainReflect.call("verbosityHelp").get();
     }
 
     private void _Options() {
         try {
-            ReflectUtil.invokeMethod(Main.class, "_Options");
+            MainReflect.call("_Options");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -116,7 +120,7 @@ public class ApktoolMainAj {
         System.out.println(
                 "ShakaApktool v" + ShakaProperties.getVersion() + " - a tool for reengineering Android apk files\n" +
                         "with\n" +
-                        "\tapktool v " + Androlib.getVersion() + ",\n" +
+                        "\tapktool v" + Androlib.getVersion() + ",\n" +
                         "\tsmali v" + ApktoolProperties.get("smaliVersion") + ",\n" +
                         "\tbaksmali v" + ApktoolProperties.get("baksmaliVersion") + "\n" +
                         "Copyright 2015 Rover12421 <rover12421@163.com>");
@@ -138,17 +142,17 @@ public class ApktoolMainAj {
 
         System.out.println("\n******************** smali ********************\n");
 
-        formatter.printHelp("ShakaApktool " + verbosityHelp() + "s[mali] [options] [--] [<smali-file>|folder]*",
+        formatter.printHelp("ShakaApktool " + "s[mali] [options] [--] [<smali-file>|folder]*",
                 "assembles a set of smali files into a dex file", smaliMainAj.basicOptions(), smaliMainAj.debugOptions());
 
         System.out.println("\n******************** baksmali ********************\n");
 
-        formatter.printHelp("ShakaApktool " + verbosityHelp() + "bs|baksmali [options] <dex-file>",
+        formatter.printHelp("ShakaApktool " + "bs|baksmali [options] <dex-file>",
                 "disassembles and/or dumps a dex file", baksmaliMainAj.basicOptions(), baksmaliMainAj.debugOptions());
 
         if (Main.isAdvanceMode()) {
             System.out.println("\n******************** AdvanceMode ********************\n");
-            formatter.printHelp("ShakaApktool " + verbosityHelp() + "publicize-resources <file_path>",
+            formatter.printHelp("ShakaApktool " + "publicize-resources <file_path>",
                     "Make all framework resources public.", emptyOptions(), (String)null);
         }
 
@@ -170,41 +174,21 @@ public class ApktoolMainAj {
 
     @Before("execution(void brut.apktool.Main._Options())")
     public void before_Options() {
-        Option language = OptionBuilder.withLongOpt("language")
-                .withDescription("Display language, e.g. zh-CN, zh-TW")
-                .hasArg(true)
-                .withArgName("Locale")
-                .create("lng");
-
-        Option no9png = OptionBuilder.withLongOpt("no-9png")
-                .withDescription("Do not decode .9 png file.")
-                .create("n9");
-
-        Option usingDefaultFramework = OptionBuilder.withLongOpt("default-framework")
-                .withDescription("Using default framework file.")
-                .create("df");
-
-        Option showMoreRecognizableCharacters = OptionBuilder.withLongOpt("more-recognizable-characters")
-                .withDescription("Show more recognizable characters")
-                .create("mc");
-
-        Option fuckUnkownId = OptionBuilder.withLongOpt("fuck_unkown_id")
-                .withDescription("Fuck unkown id")
-                .create("fui");
-
-        Option ignoreResDecodeError = OptionBuilder.withLongOpt("ignore_res_decode_error")
-                .withDescription("ignore res decode error")
-                .create("ir");
-
         try {
             Options normalOptions = normalOptions();
             Options DecodeOptions = DecodeOptions();
-            normalOptions.addOption(language);
-            DecodeOptions.addOption(no9png);
-            DecodeOptions.addOption(usingDefaultFramework);
-            DecodeOptions.addOption(showMoreRecognizableCharacters);
-            DecodeOptions.addOption(fuckUnkownId);
-            DecodeOptions.addOption(ignoreResDecodeError);
+            Options BuildOptions = BuildOptions();
+
+            normalOptions.addOption(CommandLineArgEnum.LANGUAGE.getOption());
+
+            DecodeOptions.addOption(CommandLineArgEnum.NO_9_PNG.getOption());
+            DecodeOptions.addOption(CommandLineArgEnum.USING_DEFAULT_FRAMEWORK.getOption());
+            DecodeOptions.addOption(CommandLineArgEnum.SHOW_MORE_RECOGNIZABLE_CHARACTERS.getOption());
+            DecodeOptions.addOption(CommandLineArgEnum.FUCK_UNKOWN_ID.getOption());
+            DecodeOptions.addOption(CommandLineArgEnum.IGNORE_RES_DECODE_ERROR.getOption());
+            DecodeOptions.addOption(CommandLineArgEnum.XML_ATTRIBUTE_NAME_CORRECT.getOption());
+
+            BuildOptions.addOption(CommandLineArgEnum.FUCK_NOT_DEFINED_RES.getOption());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -213,24 +197,40 @@ public class ApktoolMainAj {
     @Before("execution(void brut.apktool.Main.cmdDecode(..))" +
             "&& args(cli)")
     public void cmdDecode_before(CommandLine cli) {
-        if (cli.hasOption("n9") || cli.hasOption("no-9png")) {
-            ShakaDecodeOption.getInstance().setNo9png(true);
+        ShakaDecodeOption decodeOption = ShakaDecodeOption.getInstance();
+
+        if (CommandLineArgEnum.NO_9_PNG.hasMatch(cli)) {
+            decodeOption.setNo9png(true);
         }
 
-        if (cli.hasOption("df") || cli.hasOption("default-framework")) {
-            ShakaDecodeOption.getInstance().setUsingDefaultFramework(true);
+        if (CommandLineArgEnum.USING_DEFAULT_FRAMEWORK.hasMatch(cli)) {
+            decodeOption.setUsingDefaultFramework(true);
         }
 
-        if (cli.hasOption("mc") || cli.hasOption("more-recognizable-characters")) {
-            ShakaDecodeOption.getInstance().setShowMoreRecognizableCharacters(true);
+        if (CommandLineArgEnum.SHOW_MORE_RECOGNIZABLE_CHARACTERS.hasMatch(cli)) {
+            decodeOption.setShowMoreRecognizableCharacters(true);
         }
 
-        if (cli.hasOption("fui") || cli.hasOption("fuck_unkown_id")) {
-            ShakaDecodeOption.getInstance().setFuckUnkownId(true);
+        if (CommandLineArgEnum.FUCK_UNKOWN_ID.hasMatch(cli)) {
+            decodeOption.setFuckUnkownId(true);
         }
 
-        if (cli.hasOption("ir") || cli.hasOption("ignore_res_decode_error")) {
-            ShakaDecodeOption.getInstance().setIgnoreResDecodeError(true);
+        if (CommandLineArgEnum.IGNORE_RES_DECODE_ERROR.hasMatch(cli)) {
+            decodeOption.setIgnoreResDecodeError(true);
+        }
+
+        if (CommandLineArgEnum.XML_ATTRIBUTE_NAME_CORRECT.hasMatch(cli)) {
+            decodeOption.setXmlAttributeNameCorrect(true);
+        }
+    }
+
+    @Before("execution(void brut.apktool.Main.cmdBuild(..))" +
+            "&& args(cli)")
+    public void cmdBuild_before(CommandLine cli) {
+        ShakaBuildOption buildOption = ShakaBuildOption.getInstance();
+
+        if (CommandLineArgEnum.FUCK_NOT_DEFINED_RES.hasMatch(cli)) {
+            buildOption.setFuckNotDefinedRes(true);
         }
     }
 }

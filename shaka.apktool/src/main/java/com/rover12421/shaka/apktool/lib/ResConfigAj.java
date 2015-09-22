@@ -17,11 +17,17 @@
 package com.rover12421.shaka.apktool.lib;
 
 import brut.androlib.AndrolibException;
+import brut.androlib.res.data.ResResSpec;
 import brut.androlib.res.data.ResResource;
+import brut.androlib.res.data.value.ResFileValue;
+import brut.androlib.res.data.value.ResValue;
 import com.rover12421.shaka.lib.LogHelper;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Created by rover12421 on 8/2/14.
@@ -29,13 +35,40 @@ import org.aspectj.lang.annotation.Aspect;
 @Aspect
 public class ResConfigAj {
 
+    public final static Map<Integer, ResResource> MultopleResFileValue = new HashMap<>();
+
+    //重复资源前缀
+    public final static String MultipleSpec_Perfix = "_?m@";
+
     @Around("execution(void brut.androlib.res.data.ResConfig.addResource(..))" +
             "&& args(res, overwrite)")
     public void addResource(ProceedingJoinPoint joinPoint, ResResource res, boolean overwrite) throws Throwable {
+        ResResSpec spec = res.getResSpec();
+
+        ResResSpec resSpec = ResTypeAj.MultipleSpecs.get(spec.getId().id);
+        if (resSpec != null) {
+            //有重复的ResResSpec
+            ResValue resValue = res.getValue();
+            String rename;
+            if (resValue instanceof ResFileValue) {
+                ResFileValue fileValue = (ResFileValue) resValue;
+                rename = fileValue.getPath().replaceAll("/|\\\\|\\.", "_");
+                MultopleResFileValue.put(spec.getId().id, res);
+            } else {
+                rename = MultipleSpec_Perfix + spec.getId();
+            }
+
+            if (rename != null) {
+//                LogHelper.warning("Rename ResResSpec " + spec.getName() + " to " + rename);
+                ResResSpecAj.setName(spec, rename);
+                ResTypeAj.addSpecToResType(spec);
+            }
+        }
+
         try {
             joinPoint.proceed(joinPoint.getArgs());
         } catch (AndrolibException e) {
-            LogHelper.warning("Add Repeat Resource > " + e.getMessage());
+            LogHelper.warning(e.getMessage());
         }
     }
 }

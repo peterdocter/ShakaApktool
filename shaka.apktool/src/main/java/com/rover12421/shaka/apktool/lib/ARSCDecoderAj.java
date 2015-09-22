@@ -15,10 +15,22 @@
  */
 package com.rover12421.shaka.apktool.lib;
 
+import android.util.TypedValue;
+import brut.androlib.res.data.ResPackage;
+import brut.androlib.res.data.ResType;
+import brut.androlib.res.data.value.ResIntBasedValue;
+import brut.androlib.res.decoder.ARSCDecoder;
+import brut.androlib.res.decoder.StringBlock;
+import brut.util.ExtDataInput;
+import com.rover12421.shaka.lib.LogHelper;
 import com.rover12421.shaka.lib.ShakaDecodeOption;
+import com.rover12421.shaka.lib.reflect.Reflect;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+
+import java.io.EOFException;
+import java.io.IOException;
 
 /**
  * Created by rover12421 on 8/16/14.
@@ -26,11 +38,121 @@ import org.aspectj.lang.annotation.Aspect;
 @Aspect
 public class ARSCDecoderAj {
 
+    //ResTable_header 结构的标准长度
+    private final static int ResTable_header_SIZE= 12;
+
     @Around("execution(* brut.androlib.res.decoder.ARSCDecoder.addMissingResSpecs())")
     public void addMissingResSpecs(ProceedingJoinPoint joinPoint) throws Throwable {
         if (!ShakaDecodeOption.getInstance().isFuckUnkownId()) {
             joinPoint.proceed(joinPoint.getArgs());
         }
     }
+
+    public ExtDataInput mIn(ARSCDecoder thiz) throws Exception {
+        return  Reflect.on(thiz).get("mIn");
+    }
+
+    public ResPackage mPkg(ARSCDecoder thiz) throws Exception {
+        return  Reflect.on(thiz).get("mPkg");
+    }
+
+    public ARSCDecoder.Header mHeader(ARSCDecoder thiz) throws Exception {
+        return  Reflect.on(thiz).get("mHeader");
+    }
+
+    public StringBlock mTableStrings(ARSCDecoder thiz) throws Exception {
+        return  Reflect.on(thiz).get("mTableStrings");
+    }
+
+    public ResType mType(ARSCDecoder thiz) throws Exception {
+        return  Reflect.on(thiz).get("mType");
+    }
+
+    @Around("execution(* brut.androlib.res.decoder.ARSCDecoder.nextChunk())")
+    public ARSCDecoder.Header nextChunk(ProceedingJoinPoint joinPoint) throws Exception {
+//        return mHeader = Header.read(mIn);
+        ExtDataInput mIn = mIn((ARSCDecoder) joinPoint.getThis());
+        ARSCDecoder.Header mHeader = ResChunk_header.read(mIn);
+        Reflect.on(joinPoint.getThis()).set("mHeader", mHeader);
+        return mHeader;
+    }
+
+    @Around("execution(* brut.androlib.res.decoder.ARSCDecoder.readTable())")
+    public ResPackage[] readTable(ProceedingJoinPoint joinPoint) throws Exception {
+        ARSCDecoder decoder = (ARSCDecoder) joinPoint.getThis();
+        ExtDataInput mIn = mIn(decoder);
+
+        Reflect decoderReflect = Reflect.on(decoder);
+//        nextChunkCheckType(ARSCDecoder.Header.TYPE_TABLE);
+        decoderReflect.method("nextChunkCheckType", int.class)
+                .invoke(decoder, ARSCDecoder.Header.TYPE_TABLE);
+        int packageCount = mIn.readInt();
+
+        try {
+            ResChunk_header header = (ResChunk_header) mHeader(decoder);
+            if (header.headerSize > ResTable_header_SIZE) {
+                int skip = header.headerSize - ResTable_header_SIZE;
+                LogHelper.warning("ResChunk_header exception : read size = " + header.headerSize + ", skip " + skip);
+                mIn.skipBytes(skip);
+            }
+        } catch (Throwable e) {
+            e.printStackTrace();
+        }
+
+
+        StringBlock mTableStrings = StringBlock.read(mIn);
+        decoderReflect.set("mTableStrings", mTableStrings);
+
+        ResPackage[] packages = new ResPackage[packageCount];
+
+//        nextChunk();
+        decoderReflect.call("nextChunk");
+
+        for (int i = 0; i < packageCount; i++) {
+//            packages[i] = readPackage();
+            packages[i] = decoderReflect.call("readPackage").get();
+        }
+        return packages;
+    }
+
+    public static class ResChunk_header extends ARSCDecoder.Header {
+        public final short headerSize;
+
+        public ResChunk_header(short type, short headerSize, int size) {
+            super(type, size);
+            this.headerSize = headerSize;
+        }
+
+        public static ResChunk_header read(ExtDataInput in) throws IOException {
+            try {
+                short type       = in.readShort();
+                short headerSize = in.readShort();
+                int size = in.readInt();
+                return new ResChunk_header(type, headerSize, size);
+            } catch (EOFException ex) {
+                return new ResChunk_header(TYPE_NONE, (short) 0, 0);
+            }
+        }
+    }
+
+    @Around("execution(* brut.androlib.res.decoder.ARSCDecoder.readValue())")
+    public ResIntBasedValue readValue(ProceedingJoinPoint joinPoint) throws Exception {
+        ARSCDecoder decoder = (ARSCDecoder) joinPoint.getThis();
+        ExtDataInput mIn = mIn(decoder);
+        ResPackage mPkg = mPkg(decoder);
+
+		/* size */mIn.skipCheckShort((short) 8);
+		/* zero */mIn.skipCheckByte((byte) 0);
+        byte type = mIn.readByte();
+        int data = mIn.readInt();
+
+        ResType mType = mType(decoder);
+
+        return type == TypedValue.TYPE_STRING
+//                ? mPkg.getValueFactory().factory(mTableStrings(decoder).getHTML(data), data)
+                ? ResValueFactoryAj.factory(mType, mTableStrings(decoder).getHTML(data), data)
+                : mPkg.getValueFactory().factory(type, data, null);
+    }
+
 
 }

@@ -16,6 +16,7 @@
 package com.rover12421.shaka.cli;
 
 import com.rover12421.shaka.apktool.cli.ApktoolMainAj;
+import com.rover12421.shaka.lib.cli.CommandLineArgEnum;
 import com.rover12421.shaka.lib.multiLanguage.MultiLanguageSupport;
 import com.rover12421.shaka.smali.baksmali.baksmaliMainAj;
 import com.rover12421.shaka.smali.smali.smaliMainAj;
@@ -42,17 +43,22 @@ public class Main {
     }
 
     public static void main(String[] args) throws Exception {
-        ArrayList<String> list = new ArrayList<>();
         boolean smali = false;
         boolean baksmali = false;
 
-        for (String arg : args) {
-            if (arg.equalsIgnoreCase("s") || arg.equalsIgnoreCase("smali")) {
+        String[] realyArgs = args;
+
+        if (args.length > 0) {
+            String cmd = args[0];
+            if (cmd.equalsIgnoreCase("s") || cmd.equalsIgnoreCase("smali")) {
                 smali = true;
-            } else if (arg.equalsIgnoreCase("bs") || arg.equalsIgnoreCase("baksmali")) {
+            } else if (cmd.equalsIgnoreCase("bs") || cmd.equalsIgnoreCase("baksmali")) {
                 baksmali = true;
-            } else {
-                list.add(arg);
+            }
+
+            if (smali || baksmali) {
+                realyArgs = new String[args.length-1];
+                System.arraycopy(args, 1, realyArgs, 0, realyArgs.length);
             }
         }
 
@@ -60,19 +66,15 @@ public class Main {
         CommandLineParser parser = new IgnoreUnkownArgsPosixParser();
         CommandLine commandLine;
 
-        Option language = OptionBuilder.withLongOpt("language")
-            .withDescription("Display language, e.g. zh-CN, zh-TW")
-            .hasArg(true)
-            .withArgName("Locale")
-            .create("lng");
+        Option language = CommandLineArgEnum.LANGUAGE.getOption();
 
         Options options = new Options();
         options.addOption(language);
 
         try {
             commandLine = parser.parse(options, args, false);
-            if (commandLine.hasOption("lng") || commandLine.hasOption("language")) {
-                String lngStr = commandLine.getOptionValue("lng");
+            if (CommandLineArgEnum.LANGUAGE.hasMatch(commandLine)) {
+                String lngStr = commandLine.getOptionValue(CommandLineArgEnum.LANGUAGE.getOpt());
                 Locale locale = Locale.forLanguageTag(lngStr);
                 if (locale.toString().isEmpty()) {
                     lngStr = lngStr.replaceAll("_", "-");
@@ -83,17 +85,14 @@ public class Main {
         } catch (Exception ex) {
         }
 
-        String[] newArgs = new String[list.size()];
-        newArgs = list.toArray(newArgs);
-
         if (smali) {
             smaliMainAj.setHookMain(ApktoolMainAj.getHookMain());
-            org.jf.smali.main.main(newArgs);
+            org.jf.smali.main.main(realyArgs);
         } else if (baksmali) {
             baksmaliMainAj.setHookMain(ApktoolMainAj.getHookMain());
-            org.jf.baksmali.main.main(newArgs);
+            org.jf.baksmali.main.main(realyArgs);
         } else {
-            brut.apktool.Main.main(args);
+            brut.apktool.Main.main(realyArgs);
         }
     }
 }

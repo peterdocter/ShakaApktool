@@ -37,7 +37,6 @@ import brut.androlib.res.data.ResTable;
 import brut.androlib.res.data.ResUnknownFiles;
 import brut.androlib.res.util.ExtFile;
 import brut.androlib.src.SmaliDecoder;
-import brut.common.BrutException;
 import brut.directory.Directory;
 import brut.directory.DirectoryException;
 import brut.directory.FileDirectory;
@@ -46,13 +45,14 @@ import brut.util.OS;
 import com.rover12421.shaka.lib.ShakaProperties;
 import com.rover12421.shaka.lib.AndroidZip;
 import com.rover12421.shaka.lib.LogHelper;
-import com.rover12421.shaka.lib.ReflectUtil;
+import com.rover12421.shaka.lib.reflect.Reflect;
 import org.apache.commons.io.IOUtils;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.*;
 
 import java.io.*;
+import java.nio.file.*;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -65,7 +65,7 @@ import java.util.zip.*;
 @Aspect
 public class AndrolibAj {
 
-    public String getUNK_DIRNAME() throws NoSuchFieldException, IllegalAccessException {
+    public String getUNK_DIRNAME() {
 //        return (String) ReflectUtil.getFieldValue(Androlib.class, "UNK_DIRNAME");
         return "unknown";
     }
@@ -91,12 +91,12 @@ public class AndrolibAj {
                 Set<String> addFiles = directory.getFiles(true);
                 Map<String, String> files = (Map<String, String>)meta.get("unknownFiles");
                 if (files == null) {
-                    ResUnknownFiles mResUnknownFiles = (ResUnknownFiles) ReflectUtil.getFieldValue(joinPoint.getThis(), "mResUnknownFiles");
+                    ResUnknownFiles mResUnknownFiles = Reflect.on(joinPoint.getThis()).get("mResUnknownFiles");
                     files = mResUnknownFiles.getUnknownFiles();
                     meta.put("unknownFiles", files);
                 }
                 for (String file : addFiles) {
-                    //判断下.是否已经存在.已经存在的,压缩模式试用原包的模式
+                    //判断下.是否已经存在.已经存在的,压缩模式使用原包的模式
                     if (!files.containsKey(file)) {
                         files.put(file, AndroidZip.getZipMethod(new File(appDir, file).getAbsolutePath()) + "");
                     }
@@ -104,7 +104,7 @@ public class AndrolibAj {
             } catch (DirectoryException e) {
                 e.printStackTrace();
             }
-        } catch (NoSuchFieldException | IllegalAccessException e) {
+        } catch (Throwable e) {
             e.printStackTrace();
         }
 
@@ -180,11 +180,13 @@ public class AndrolibAj {
          * 其它情况需手动添加到`apktool.yml`下
          */
         File[] files = appDir.getAbsoluteFile().listFiles();
-        for (File file : files) {
-            String name = file.getName();
-            if (file.isDirectory() && !DexMaps.containsKey(name) && name.startsWith("smali_")) {
-                String key = name.substring("smali_".length()) + ".dex";
-                DexMaps.put(key, name);
+        if (files != null) {
+            for (File file : files) {
+                String name = file.getName();
+                if (file.isDirectory() && !DexMaps.containsKey(name) && name.startsWith("smali_")) {
+                    String key = name.substring("smali_".length()) + ".dex";
+                    DexMaps.put(key, name);
+                }
             }
         }
 
@@ -265,7 +267,7 @@ public class AndrolibAj {
     }
 
     private void copyUnknownFiles(File appDir, ZipOutputStream outputFile, Map<String, String> files)
-            throws IOException, NoSuchFieldException, IllegalAccessException {
+            throws IOException {
         String UNK_DIRNAME = getUNK_DIRNAME();
         File unknownFileDir = new File(appDir, UNK_DIRNAME);
 
@@ -319,52 +321,75 @@ public class AndrolibAj {
     public void decodeUnknownFiles_after(JoinPoint joinPoint, ExtFile apkFile, File outDir, ResTable resTable) {
         try {
             File unknownOut = new File(outDir, getUNK_DIRNAME());
-            ResUnknownFiles mResUnknownFiles = (ResUnknownFiles) ReflectUtil.getFieldValue(joinPoint.getThis(), "mResUnknownFiles");
-            ZipFile zipFile = new ZipFile(apkFile.getAbsolutePath());
-            try (
-                    FileInputStream fis = new FileInputStream(apkFile.getAbsoluteFile());
-                    ZipInputStream zis = new ZipInputStream(fis)
-                    ){
-                ZipEntry entry;
-                while ((entry = zis.getNextEntry()) != null) {
-                    String entryName = entry.getName();
-                    if (!entry.isDirectory()
-                            && !entryName.equals("classes.dex")
-                            && !entryName.equals("resources.arsc")
-                            ) {
+            ResUnknownFiles mResUnknownFiles = Reflect.on(joinPoint.getThis()).get("mResUnknownFiles");
 
-                        /**
-                         * 过滤签名文件
-                         */
-                        if (entryName.replaceFirst("META-INF[/\\\\]+[^/\\\\]+\\.(SF|RSA)", "").isEmpty()) {
-                            continue;
-                        }
-
-                        /**
-                         * 过滤dex文件
-                         */
-                        if (DexMaps.containsKey(entryName)) {
-                            continue;
-                        }
-
-                        File resFile = new File(outDir, getDecodeFileMapName(entryName));
-                        if (!resFile.exists()) {
-                            File unFile = new File(unknownOut, entryName);
-                            if (unFile.exists()) continue;
-
-                            unFile.getParentFile().mkdirs();
-                            try (
-                                    FileOutputStream fos = new FileOutputStream(unFile);
-                                    InputStream is = zipFile.getInputStream(entry)
-                                    ){
-                                IOUtils.copy(is, fos);
-                            }
-                            mResUnknownFiles.addUnknownFileInfo(entryName, String.valueOf(entry.getMethod()));
-                        }
-                    }
+            Directory unk = apkFile.getDirectory();
+            // loop all items in container recursively, ignoring any that are pre-defined by aapt
+            Set<String> files = unk.getFiles(true);
+            for (String file : files) {
+                if (
+                        file.equals("classes.dex")
+                        || file.equals("resources.arsc")) {
+                    continue;
                 }
+
+                /**
+                 * 过滤签名文件
+                 */
+                if (file.replaceFirst("META-INF[/\\\\]+[^/\\\\]+\\.(SF|RSA)", "").isEmpty()) {
+                    continue;
+                }
+
+                /**
+                 * 过滤dex文件
+                 */
+                if (DexMaps.containsKey(file)) {
+                    continue;
+                }
+
+                String decodeMapFileName = getDecodeFileMapName(file);
+                File resFile = new File(outDir, decodeMapFileName);
+                if (resFile.exists()) {
+                    //已经编码过的文件,从未知表中移除
+                    mResUnknownFiles.getUnknownFiles().remove(file);
+                    File needDeleteFile = new File(unknownOut, file);
+                    if (needDeleteFile.exists()) {
+                        //已编码文件在未知目录中,需要删除
+                        needDeleteFile.delete();
+                    }
+                } else {
+                    File unFile = new File(unknownOut, file);
+                    if (unFile.exists()) {
+                        //未知文件已经存在
+                        continue;
+                    }
+
+                    //不存在,解压文件
+                    // copy file out of archive into special "unknown" folder
+                    unk.copyToDir(unknownOut, file);
+                    // lets record the name of the file, and its compression type
+                    // so that we may re-include it the same way
+                    mResUnknownFiles.addUnknownFileInfo(file, String.valueOf(unk.getCompressionLevel(file)));
+                }
+
+
             }
-        } catch (NoSuchFieldException | IllegalAccessException | IOException e) {
+
+            if (unknownOut.exists()) {
+                //删除空目录
+                Files.walkFileTree(Paths.get(unknownOut.getAbsolutePath()), new SimpleFileVisitor<Path>(){
+                    @Override
+                    public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                        try {
+                            Files.deleteIfExists(dir);
+                        } catch (Exception e){
+                            // ignore exception
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+                });
+            }
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }

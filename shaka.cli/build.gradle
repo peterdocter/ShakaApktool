@@ -56,8 +56,9 @@ task proguard(type: JavaExec, dependsOn: fatJar) {
     args '-dontwarn com.google.common.collect.**'
     args '-dontwarn com.google.common.util.**'
     args '-dontwarn javax.xml.xpath.**'
-    args '-dontwarn com.rover12421.shaka.apktool.AspjectJ.**'
+    args '-dontwarn com.rover12421.shaka.**'
     args '-dontwarn brut.androlib.**'
+    args '-dontwarn org.jf.dexlib2.**'
     args '-keep public class Main { public static void main(java.lang.String[]); }'
     args '-keep public class com.rover12421.shaka.cli.Main { public static void main(java.lang.String[]); }'
     args '-keep class org.yaml.snakeyaml.** { public protected private *; }'
@@ -72,6 +73,10 @@ task proguard(type: JavaExec, dependsOn: fatJar) {
     args '-keepclassmembers class brut.androlib.res.decoder.AXmlResourceParser { *** mAttrDecoder; *** m_attributes; *** m_strings; *** android_ns; *** getAttributeOffset(...);}'
     args '-keepclassmembers class org.jf.dexlib2.dexbacked.DexBackedMethodImplementation { *** codeOffset; }'
     args '-keepclassmembers class brut.androlib.res.data.ResPackage { *** mResTable; }'
+    args '-keepclassmembers class brut.androlib.res.decoder.ARSCDecoder { *** mIn; *** mPkg; *** mType; *** mHeader; *** mTableStrings; *** nextChunkCheckType(...); *** nextChunk(...); *** readPackage(...); }'
+    args '-keepclassmembers class brut.androlib.res.data.ResResSpec { *** mName; }'
+    args '-keepclassmembers class brut.androlib.res.data.value.ResFileValue { *** mPath; }'
+    args '-keepclassmembers class org.jf.dexlib2.analysis.AnalyzedInstruction { *** instruction; }'
 }
 
 tasks.getByPath(':release').dependsOn(proguard)

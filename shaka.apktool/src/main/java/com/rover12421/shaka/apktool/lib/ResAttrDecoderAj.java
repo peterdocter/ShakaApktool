@@ -15,15 +15,14 @@
  */
 package com.rover12421.shaka.apktool.lib;
 
-import brut.androlib.AndrolibException;
-import brut.androlib.res.data.ResPackage;
-import brut.androlib.res.data.value.ResAttr;
-import brut.androlib.res.data.value.ResScalarValue;
-import brut.androlib.res.decoder.ResAttrDecoder;
-import com.rover12421.shaka.lib.ShakaRuntimeException;
-import org.aspectj.lang.ProceedingJoinPoint;
-import org.aspectj.lang.annotation.Around;
+import brut.androlib.res.data.ResResSpec;
+import brut.androlib.res.data.ResResource;
+import brut.androlib.res.data.value.ResFileValue;
+import com.rover12421.shaka.lib.LogHelper;
+import org.aspectj.lang.annotation.AfterReturning;
 import org.aspectj.lang.annotation.Aspect;
+
+import java.io.File;
 
 /**
  * Created by rover12421 on 8/9/14.
@@ -32,32 +31,97 @@ import org.aspectj.lang.annotation.Aspect;
 @Aspect
 public class ResAttrDecoderAj {
 
-    @Around("execution(* brut.androlib.res.decoder.ResAttrDecoder.decode(..))" +
-            "&& args(type, value, rawValue, attrResId)")
-    public String decode_around(ProceedingJoinPoint joinPoint, int type, int value, String rawValue, int attrResId) {
-        try {
-            ResAttrDecoder resAttrDecoder = (ResAttrDecoder) joinPoint.getThis();
-            ResPackage mCurrentPackage = resAttrDecoder.getCurrentPackage();
-            ResScalarValue resValue = mCurrentPackage.getValueFactory().factory(
-                    type, value, rawValue);
+    /**
+     * 9cb3df8 已经修复.和这个完全相同.移除
+     */
+//    @Around("execution(* brut.androlib.res.decoder.ResAttrDecoder.decode(..))" +
+//            "&& args(type, value, rawValue, attrResId)")
+//    public String decode_around(ProceedingJoinPoint joinPoint, int type, int value, String rawValue, int attrResId) {
+//        try {
+//            ResAttrDecoder resAttrDecoder = (ResAttrDecoder) joinPoint.getThis();
+//            ResPackage mCurrentPackage = resAttrDecoder.getCurrentPackage();
+//            ResScalarValue resValue = mCurrentPackage.getValueFactory().factory(
+//                    type, value, rawValue);
+//
+//            String decoded = null;
+////            if (attrResId != 0) {
+//            if (attrResId > 0) {
+////                ResAttr attr = (ResAttr) getCurrentPackage().getResTable()
+//                try {
+//                    ResAttr attr = (ResAttr) mCurrentPackage.getResTable()
+//                            .getResSpec(attrResId).getDefaultResource().getValue();
+//                    decoded = attr.convertToResXmlFormat(resValue);
+//                } catch (AndrolibException e) {
+////                e.printStackTrace();
+//                }
+//            }
+//
+//            return decoded != null ? decoded : resValue.encodeAsResXmlAttr();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            throw new ShakaRuntimeException(e);
+//        }
+//    }
 
-            String decoded = null;
-//            if (attrResId != 0) {
-            if (attrResId > 0) {
-//                ResAttr attr = (ResAttr) getCurrentPackage().getResTable()
-                try {
-                    ResAttr attr = (ResAttr) mCurrentPackage.getResTable()
-                            .getResSpec(attrResId).getDefaultResource().getValue();
-                    decoded = attr.convertToResXmlFormat(resValue);
-                } catch (AndrolibException e) {
-//                e.printStackTrace();
+    private String getResSpecName(String name) {
+        /**
+         * 过滤包名
+         */
+        int index = name.indexOf(":");
+        if (index > 0) {
+            name = name.substring(index+1);
+        }
+        return name;
+    }
+
+    @AfterReturning(pointcut = "execution(* brut.androlib.res.decoder.ResAttrDecoder.decode(..))" +
+            "&& args(type, value, rawValue, attrResId)", returning = "ret")
+    public void decode_afterRetruning(int type, int value, String rawValue, int attrResId, String ret) throws Exception {
+        if (ResFileDecoderAj.DonotRecord) {
+            return;
+        }
+        ResResSpec spec = ResTypeAj.AllSpecs.get(value);
+        if (spec != null) {
+            //查找到ResResSpec
+            String oldName = spec.getName();
+            int index = ret.indexOf("/");   // type/name.ext
+            if (index > 0) {
+                String newName = ret.substring(index + 1);
+                newName = getResSpecName(newName);
+                if (!oldName.equals(newName)) {
+                    LogHelper.warning("Rename ResResSpec " + oldName + " to " + newName);
+                    ResResSpecAj.setName(spec, newName);
+                    ResTypeAj.addSpecToResType(spec);
+
+                    /**
+                     * 需要再次Decode
+                     * 可能有些值已经写入到文件了,需要重新Decode来纠正
+                     */
+                    ResFileDecoderAj.NeedReDecodeFiles = true;
+
+                    ResResource res = ResConfigAj.MultopleResFileValue.get(spec.getId().id);
+                    if (res != null) {
+                        ResFileValue fileValue = (ResFileValue) res.getValue();
+                        String mapPath = AndrolibAj.DecodeFileMaps.get(fileValue.getPath());
+                        File outfile = new File(AndrolibResourcesAj.getOutDir().getAbsolutePath() + File.separator +  mapPath);
+                        if (outfile.exists()) {
+                            String fileName = outfile.getName();
+                            int extIndex = fileName.lastIndexOf(".");
+                            String ext = "";
+                            if (extIndex > 0) {
+                                ext = fileName.substring(extIndex);
+                            }
+                            File renamefile = new File(outfile.getParent() + File.separator + newName + ext);
+                            outfile.renameTo(renamefile);
+
+                            String newMapFile = renamefile.getAbsolutePath().substring(AndrolibResourcesAj.getOutDir().getAbsolutePath().length()+1);
+                            AndrolibAj.DecodeFileMaps.put(fileValue.getPath(), newMapFile);
+                            LogHelper.warning("Rename resource file " + fileValue.getPath() + " to " + newMapFile);
+                        }
+                    }
                 }
             }
 
-            return decoded != null ? decoded : resValue.encodeAsResXmlAttr();
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new ShakaRuntimeException(e);
         }
     }
 

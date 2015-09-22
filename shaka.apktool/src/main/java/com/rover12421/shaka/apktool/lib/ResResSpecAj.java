@@ -17,8 +17,10 @@
 package com.rover12421.shaka.apktool.lib;
 
 import brut.androlib.AndrolibException;
+import brut.androlib.res.data.ResResSpec;
 import brut.androlib.res.data.ResResource;
 import com.rover12421.shaka.lib.LogHelper;
+import com.rover12421.shaka.lib.reflect.Reflect;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -35,7 +37,11 @@ public class ResResSpecAj {
         try {
             joinPoint.proceed(joinPoint.getArgs());
         } catch (AndrolibException e) {
-                LogHelper.warning("Add Repeat Resource : " + e.getMessage());
+            LogHelper.warning(e.getMessage());
         }
+    }
+
+    public static void setName(ResResSpec spec, String name) throws Exception {
+        Reflect.on(spec).set("mName", name);
     }
 }
